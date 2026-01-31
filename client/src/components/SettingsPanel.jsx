@@ -94,8 +94,8 @@ const SettingsPanel = ({
             </h3>
             
             {/* Dark Mode Toggle */}
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-between py-2">
+              <div className="pr-4">
                 <p className="font-medium text-slate-800 dark:text-slate-200">Dark Mode</p>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
                   Use dark theme for the interface
@@ -103,13 +103,15 @@ const SettingsPanel = ({
               </div>
               <button
                 onClick={() => setLocalSettings(prev => ({ ...prev, darkMode: !prev.darkMode }))}
-                className={`relative w-12 h-6 rounded-full transition-colors ${
+                className={`relative w-14 h-8 rounded-full transition-colors flex-shrink-0 ${
                   localSettings.darkMode ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-700'
                 }`}
+                role="switch"
+                aria-checked={localSettings.darkMode}
               >
                 <span
-                  className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                    localSettings.darkMode ? 'translate-x-7' : 'translate-x-1'
+                  className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full shadow-lg transition-transform ${
+                    localSettings.darkMode ? 'translate-x-6' : 'translate-x-0'
                   }`}
                 />
               </button>
@@ -136,8 +138,8 @@ const SettingsPanel = ({
             </div>
 
             {/* Compact Mode */}
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-between py-2">
+              <div className="pr-4">
                 <p className="font-medium text-slate-800 dark:text-slate-200">Compact Mode</p>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
                   Reduce spacing for more messages
@@ -145,13 +147,15 @@ const SettingsPanel = ({
               </div>
               <button
                 onClick={() => setLocalSettings(prev => ({ ...prev, compactMode: !prev.compactMode }))}
-                className={`relative w-12 h-6 rounded-full transition-colors ${
+                className={`relative w-14 h-8 rounded-full transition-colors flex-shrink-0 ${
                   localSettings.compactMode ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-700'
                 }`}
+                role="switch"
+                aria-checked={localSettings.compactMode}
               >
                 <span
-                  className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                    localSettings.compactMode ? 'translate-x-7' : 'translate-x-1'
+                  className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full shadow-lg transition-transform ${
+                    localSettings.compactMode ? 'translate-x-6' : 'translate-x-0'
                   }`}
                 />
               </button>
@@ -165,8 +169,8 @@ const SettingsPanel = ({
             </h3>
 
             {/* Streaming */}
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-between py-2">
+              <div className="pr-4">
                 <p className="font-medium text-slate-800 dark:text-slate-200">Streaming Responses</p>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
                   Show AI responses in real-time
@@ -174,13 +178,15 @@ const SettingsPanel = ({
               </div>
               <button
                 onClick={() => setLocalSettings(prev => ({ ...prev, streamingEnabled: !prev.streamingEnabled }))}
-                className={`relative w-12 h-6 rounded-full transition-colors ${
+                className={`relative w-14 h-8 rounded-full transition-colors flex-shrink-0 ${
                   localSettings.streamingEnabled ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-700'
                 }`}
+                role="switch"
+                aria-checked={localSettings.streamingEnabled}
               >
                 <span
-                  className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                    localSettings.streamingEnabled ? 'translate-x-7' : 'translate-x-1'
+                  className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full shadow-lg transition-transform ${
+                    localSettings.streamingEnabled ? 'translate-x-6' : 'translate-x-0'
                   }`}
                 />
               </button>
