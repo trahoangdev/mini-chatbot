@@ -1,6 +1,8 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import MessageList from './MessageList';
 import MessageInput from './MessageInput';
+import SettingsPanel from './SettingsPanel';
+import ExportImportPanel from './ExportImportPanel';
 import chatService from '../services/chatService';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -20,8 +22,64 @@ const ChatWindow = () => {
     const saved = localStorage.getItem('conversations');
     return saved ? JSON.parse(saved) : [];
   });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  // eslint-disable-next-line no-unused-vars
+  const [isStreaming, setIsStreaming] = useState(false);
+  // eslint-disable-next-line no-unused-vars
+  const [streamedContent, setStreamedContent] = useState('');
   const messagesEndRef = useRef(null);
+  // eslint-disable-next-line no-unused-vars
+  const abortControllerRef = useRef(null);
   const textareaRef = useRef(null);
+
+  // Settings state
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [fontSize, setFontSize] = useState(() => {
+    return localStorage.getItem('fontSize') || 'medium';
+  });
+  const [compactMode, setCompactMode] = useState(() => {
+    return localStorage.getItem('compactMode') === 'true';
+  });
+  const [streamingEnabled, setStreamingEnabled] = useState(() => {
+    return localStorage.getItem('streamingEnabled') !== 'false';
+  });
+  
+  // Export/Import state
+  const [exportImportOpen, setExportImportOpen] = useState(false);
+
+  // Search functionality
+  useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setSearchResults([]);
+      return;
+    }
+
+    const query = searchQuery.toLowerCase();
+    const results = conversations.filter(conv => {
+      // Search in title
+      if (conv.title.toLowerCase().includes(query)) {
+        return true;
+      }
+      // Search in messages
+      if (conv.messages) {
+        return conv.messages.some(msg => 
+          msg.content.toLowerCase().includes(query)
+        );
+      }
+      return false;
+    });
+
+    setSearchResults(results);
+  }, [searchQuery, conversations]);
+
+  // Filtered conversations based on search
+  const filteredConversations = useMemo(() => {
+    if (searchQuery.trim() === '') {
+      return conversations;
+    }
+    return searchResults;
+  }, [conversations, searchResults, searchQuery]);
 
   // Persist dark mode preference
   useEffect(() => {
@@ -88,35 +146,91 @@ const ChatWindow = () => {
 
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
+    setIsStreaming(true);
+    setStreamedContent('');
+
+    // Create a placeholder message for streaming
+    const streamingMessageId = uuidv4();
+    const streamingMessage = {
+      id: streamingMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date(),
+      isStreaming: true
+    };
+    
+    setMessages(prev => [...prev, streamingMessage]);
 
     try {
-      const result = await chatService.sendMessage(
+      // Try streaming first, fall back to regular if not supported
+      const result = await chatService.sendMessageStream(
         content,
         selectedModel,
-        conversationId
+        conversationId,
+        (chunk) => {
+          setStreamedContent(chunk);
+          setMessages(prev => prev.map(msg => 
+            msg.id === streamingMessageId 
+              ? { ...msg, content: chunk } 
+              : msg
+          ));
+        }
       );
 
       if (result.success) {
-        setConversationId(result.conversationId);
+        setConversationId(result.conversationId || conversationId);
         
         const assistantMessage = {
-          id: result.message.id,
+          id: streamingMessageId,
           role: 'assistant',
-          content: result.message.content,
-          timestamp: new Date(result.message.timestamp)
+          content: result.content,
+          timestamp: new Date(),
+          isStreaming: false
         };
 
-        setMessages(prev => [...prev, assistantMessage]);
+        setMessages(prev => prev.map(msg => 
+          msg.id === streamingMessageId 
+            ? assistantMessage 
+            : msg
+        ));
       } else {
-        const errorMessage = {
-          id: uuidv4(),
-          role: 'system',
-          content: `Error: ${result.error || 'Failed to get response'}`,
-          timestamp: new Date()
-        };
-        setMessages(prev => [...prev, errorMessage]);
+        // Fall back to regular request
+        const fallbackResult = await chatService.sendMessage(
+          content,
+          selectedModel,
+          conversationId
+        );
+
+        if (fallbackResult.success) {
+          setConversationId(fallbackResult.conversationId);
+          
+          const assistantMessage = {
+            id: fallbackResult.message.id,
+            role: 'assistant',
+            content: fallbackResult.message.content,
+            timestamp: new Date(fallbackResult.message.timestamp)
+          };
+
+          setMessages(prev => prev.map(msg => 
+            msg.id === streamingMessageId 
+              ? assistantMessage 
+              : msg
+          ));
+        } else {
+          // Remove streaming message and show error
+          setMessages(prev => prev.filter(msg => msg.id !== streamingMessageId));
+          const errorMessage = {
+            id: uuidv4(),
+            role: 'system',
+            content: `Error: ${fallbackResult.error || 'Failed to get response'}`,
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+        }
       }
     } catch (error) {
+      // Remove streaming message and show error
+      setMessages(prev => prev.filter(msg => msg.id !== streamingMessageId));
       const errorMessage = {
         id: uuidv4(),
         role: 'system',
@@ -126,6 +240,8 @@ const ChatWindow = () => {
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
+      setIsStreaming(false);
+      setStreamedContent('');
     }
   };
 
@@ -229,6 +345,16 @@ const ChatWindow = () => {
     }
   };
 
+  const handleImportConversations = useCallback((importedConversations) => {
+    setConversations(prev => {
+      const existingIds = new Set(prev.map(c => c.id));
+      const newConversations = importedConversations.filter(
+        c => !existingIds.has(c.id)
+      );
+      return [...newConversations, ...prev].slice(0, 20);
+    });
+  }, []);
+
   const formatRelativeTime = (timestamp) => {
     const date = new Date(timestamp);
     const now = new Date();
@@ -242,6 +368,52 @@ const ChatWindow = () => {
     if (hours < 24) return `${hours}h ago`;
     if (days < 7) return `${days}d ago`;
     return date.toLocaleDateString();
+  };
+
+  // Search helper functions
+  const highlightMatch = (text, query) => {
+    if (!query.trim()) return text;
+    
+    const regex = new RegExp(`(${escapeRegExp(query)})`, 'gi');
+    const parts = text.split(regex);
+    
+    return parts.map((part, index) => 
+      regex.test(part) ? (
+        <mark key={index} className="bg-yellow-200 dark:bg-yellow-800 px-0.5 rounded">
+          {part}
+        </mark>
+      ) : (
+        part
+      )
+    );
+  };
+
+  const getMatchPreview = (conv, query) => {
+    const queryLower = query.toLowerCase();
+    
+    // Search in messages for preview
+    if (conv.messages) {
+      for (const msg of conv.messages) {
+        if (msg.content.toLowerCase().includes(queryLower)) {
+          const content = msg.content;
+          const index = content.toLowerCase().indexOf(queryLower);
+          const start = Math.max(0, index - 30);
+          const end = Math.min(content.length, index + query.length + 30);
+          let preview = content.slice(start, end);
+          
+          if (start > 0) preview = '...' + preview;
+          if (end < content.length) preview = preview + '...';
+          
+          return preview;
+        }
+      }
+    }
+    
+    return '';
+  };
+
+  const escapeRegExp = (string) => {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   };
 
   return (
@@ -276,9 +448,45 @@ const ChatWindow = () => {
           </button>
         </div>
 
+        {/* Search Input */}
+        <div className="px-3 py-2 border-b border-slate-200 dark:border-slate-800">
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search conversations..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full px-3 py-2 pl-10 text-sm bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-slate-200 transition-colors"
+            />
+            <svg 
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+          {searchQuery && (
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              {filteredConversations.length} result{filteredConversations.length !== 1 ? 's' : ''} found
+            </p>
+          )}
+        </div>
+
         {/* Conversations List */}
         <div className="flex-1 overflow-y-auto p-3">
-          {conversations.length === 0 ? (
+          {filteredConversations.length === 0 ? (
             <div className="text-center p-6">
               <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
                 <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -294,7 +502,7 @@ const ChatWindow = () => {
             </div>
           ) : (
             <div className="space-y-1">
-              {conversations.map((conv) => (
+              {filteredConversations.map((conv) => (
                 <button
                   key={conv.id}
                   onClick={() => handleLoadConversation(conv)}
@@ -310,7 +518,7 @@ const ChatWindow = () => {
                         ? 'text-blue-700 dark:text-blue-300' 
                         : 'text-slate-700 dark:text-slate-300'
                     }`}>
-                      {conv.title}
+                      {highlightMatch(conv.title, searchQuery)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 mt-1.5">
@@ -322,6 +530,11 @@ const ChatWindow = () => {
                       {conv.messageCount || (conv.messages?.length || 0)} messages
                     </span>
                   </div>
+                  {searchQuery && conv.messages && (
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 truncate">
+                      {getMatchPreview(conv, searchQuery)}
+                    </div>
+                  )}
                   
                   {/* Delete Button */}
                   <button
@@ -356,6 +569,17 @@ const ChatWindow = () => {
               </span>
             </div>
           </div>
+          
+          {/* Export/Import Button */}
+          <button
+            onClick={() => setExportImportOpen(true)}
+            className="w-full mt-3 flex items-center justify-center gap-2 px-3 py-2 text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+            </svg>
+            Export / Import
+          </button>
         </div>
       </aside>
 
@@ -416,6 +640,18 @@ const ChatWindow = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                 </svg>
               )}
+            </button>
+
+            {/* Settings Button */}
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title="Settings"
+            >
+              <svg className="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
             </button>
 
             {/* Clear Chat Button */}
@@ -481,6 +717,31 @@ const ChatWindow = () => {
           />
         </div>
       </main>
+
+      {/* Settings Panel */}
+      <SettingsPanel
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        darkMode={darkMode}
+        setDarkMode={setDarkMode}
+        selectedModel={selectedModel}
+        setSelectedModel={setSelectedModel}
+        availableModels={availableModels}
+        fontSize={fontSize}
+        setFontSize={setFontSize}
+        compactMode={compactMode}
+        setCompactMode={setCompactMode}
+        streamingEnabled={streamingEnabled}
+        setStreamingEnabled={setStreamingEnabled}
+      />
+
+      {/* Export/Import Panel */}
+      <ExportImportPanel
+        isOpen={exportImportOpen}
+        onClose={() => setExportImportOpen(false)}
+        conversations={conversations}
+        onImportConversations={handleImportConversations}
+      />
     </div>
   );
 };

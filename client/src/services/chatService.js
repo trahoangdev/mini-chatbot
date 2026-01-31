@@ -37,6 +37,53 @@ const chatService = {
     }
   },
 
+  // Streaming response support
+  async sendMessageStream(message, model, conversationId = null, onChunk) {
+    try {
+      const response = await fetch(`${API_URL}/chat/message/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message,
+          model,
+          conversationId
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullResponse = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) {
+          break;
+        }
+
+        const chunk = decoder.decode(value, { stream: true });
+        fullResponse += chunk;
+        
+        if (onChunk) {
+          onChunk(fullResponse);
+        }
+      }
+
+      return { success: true, content: fullResponse };
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error.message 
+      };
+    }
+  },
+
   async getConversation(id) {
     try {
       const response = await axios.get(`${API_URL}/chat/conversation/${id}`);
