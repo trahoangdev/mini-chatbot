@@ -162,74 +162,74 @@ const ChatWindow = () => {
     setMessages(prev => [...prev, streamingMessage]);
 
     try {
-      // Try streaming first, fall back to regular if not supported
+      let streamConversationId = conversationId;
+      
       const result = await chatService.sendMessageStream(
         content,
         selectedModel,
         conversationId,
-        (chunk) => {
-          setStreamedContent(chunk);
+        (chunk, msgId, done, data) => {
+          if (data?.conversationId) {
+            streamConversationId = data.conversationId;
+            setConversationId(data.conversationId);
+          }
           setMessages(prev => prev.map(msg => 
             msg.id === streamingMessageId 
-              ? { ...msg, content: chunk } 
+              ? { ...msg, content: chunk, isStreaming: !done } 
               : msg
           ));
         }
       );
+      
+      console.log('Stream result:', result);
 
       if (result.success) {
-        setConversationId(result.conversationId || conversationId);
-        
-        const assistantMessage = {
-          id: streamingMessageId,
-          role: 'assistant',
-          content: result.content,
-          timestamp: new Date(),
-          isStreaming: false
-        };
-
         setMessages(prev => prev.map(msg => 
           msg.id === streamingMessageId 
-            ? assistantMessage 
+            ? { ...msg, isStreaming: false } 
             : msg
         ));
-      } else {
-        // Fall back to regular request
-        const fallbackResult = await chatService.sendMessage(
-          content,
-          selectedModel,
-          conversationId
+
+        const currentConvId = streamConversationId || conversationId;
+        if (!currentConvId) return;
+        
+        const title = messages[0]?.content.slice(0, 50) + (messages[0]?.content.length > 50 ? '...' : '') || 'New Chat';
+        const updatedMessages = messages.map(m => 
+          m.id === streamingMessageId 
+            ? { ...m, isStreaming: false } 
+            : m
         );
-
-        if (fallbackResult.success) {
-          setConversationId(fallbackResult.conversationId);
-          
-          const assistantMessage = {
-            id: fallbackResult.message.id,
-            role: 'assistant',
-            content: fallbackResult.message.content,
-            timestamp: new Date(fallbackResult.message.timestamp)
-          };
-
-          setMessages(prev => prev.map(msg => 
-            msg.id === streamingMessageId 
-              ? assistantMessage 
-              : msg
-          ));
-        } else {
-          // Remove streaming message and show error
-          setMessages(prev => prev.filter(msg => msg.id !== streamingMessageId));
-          const errorMessage = {
-            id: uuidv4(),
-            role: 'system',
-            content: `Error: ${fallbackResult.error || 'Failed to get response'}`,
-            timestamp: new Date()
-          };
-          setMessages(prev => [...prev, errorMessage]);
-        }
+        
+        setConversations(prev => {
+          const exists = prev.find(c => c.id === currentConvId);
+          if (exists) {
+            return prev.map(c => c.id === currentConvId ? {
+              ...c,
+              title,
+              timestamp: new Date(),
+              messageCount: updatedMessages.length,
+              messages: updatedMessages
+            } : c);
+          }
+          return [{
+            id: currentConvId,
+            title,
+            timestamp: new Date(),
+            messageCount: updatedMessages.length,
+            messages: updatedMessages
+          }, ...prev].slice(0, 20);
+        });
+      } else {
+        setMessages(prev => prev.filter(msg => msg.id !== streamingMessageId));
+        const errorMessage = {
+          id: uuidv4(),
+          role: 'system',
+          content: `Error: ${result.error || 'Failed to get response'}`,
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, errorMessage]);
       }
     } catch (error) {
-      // Remove streaming message and show error
       setMessages(prev => prev.filter(msg => msg.id !== streamingMessageId));
       const errorMessage = {
         id: uuidv4(),
@@ -276,12 +276,13 @@ const ChatWindow = () => {
   }, [conversationId, messages]);
 
   const handleNewChat = () => {
-    if (conversationId && messages.length > 0) {
-      const title = messages[0].content.slice(0, 50) + (messages[0].content.length > 50 ? '...' : '');
-      setConversations(prev => {
-        const exists = prev.find(c => c.id === conversationId);
+    setConversations(prevConversations => {
+      if (conversationId && messages.length > 0) {
+        const title = messages[0].content.slice(0, 50) + (messages[0].content.length > 50 ? '...' : '');
+        const exists = prevConversations.find(c => c.id === conversationId);
+        
         if (exists) {
-          return prev.map(c => c.id === conversationId ? {
+          return prevConversations.map(c => c.id === conversationId ? {
             ...c,
             title,
             timestamp: new Date(),
@@ -295,21 +296,23 @@ const ChatWindow = () => {
           timestamp: new Date(),
           messageCount: messages.length,
           messages: messages
-        }, ...prev].slice(0, 20);
-      });
-    }
+        }, ...prevConversations].slice(0, 20);
+      }
+      return prevConversations;
+    });
+    
     setMessages([]);
     setConversationId(null);
     textareaRef.current?.focus();
   };
 
   const handleLoadConversation = (conv) => {
-    if (conversationId && messages.length > 0 && conversationId !== conv.id) {
-      const title = messages[0].content.slice(0, 50) + (messages[0].content.length > 50 ? '...' : '');
-      setConversations(prev => {
-        const exists = prev.find(c => c.id === conversationId);
+    setConversations(prevConversations => {
+      if (conversationId && messages.length > 0 && conversationId !== conv.id) {
+        const title = messages[0].content.slice(0, 50) + (messages[0].content.length > 50 ? '...' : '');
+        const exists = prevConversations.find(c => c.id === conversationId);
         if (exists) {
-          return prev.map(c => c.id === conversationId ? {
+          return prevConversations.map(c => c.id === conversationId ? {
             ...c,
             title,
             timestamp: new Date(),
@@ -323,9 +326,10 @@ const ChatWindow = () => {
           timestamp: new Date(),
           messageCount: messages.length,
           messages: messages
-        }, ...prev].slice(0, 20);
-      });
-    }
+        }, ...prevConversations].slice(0, 20);
+      }
+      return prevConversations;
+    });
     
     if (conv.messages && conv.messages.length > 0) {
       setMessages(conv.messages.map(m => ({
@@ -503,10 +507,13 @@ const ChatWindow = () => {
           ) : (
             <div className="space-y-1">
               {filteredConversations.map((conv) => (
-                <button
+                <div
                   key={conv.id}
                   onClick={() => handleLoadConversation(conv)}
-                  className={`w-full text-left p-3 rounded-xl transition-all duration-200 group relative ${
+                  onKeyDown={(e) => e.key === 'Enter' && handleLoadConversation(conv)}
+                  role="button"
+                  tabIndex={0}
+                  className={`w-full text-left p-3 rounded-xl transition-all duration-200 group relative cursor-pointer ${
                     conversationId === conv.id 
                       ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50' 
                       : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 border border-transparent'
@@ -550,7 +557,7 @@ const ChatWindow = () => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>
-                </button>
+                </div>
               ))}
             </div>
           )}

@@ -1,7 +1,6 @@
 import ollamaService from '../services/ollamaService.js';
 import { v4 as uuidv4 } from 'uuid';
 
-// In-memory storage for conversations (in production, use a database)
 const conversations = new Map();
 
 export const chatController = {
@@ -26,7 +25,6 @@ export const chatController = {
         });
       }
 
-      // Get or create conversation
       let conversation;
       if (conversationId && conversations.has(conversationId)) {
         conversation = conversations.get(conversationId);
@@ -39,7 +37,6 @@ export const chatController = {
         };
       }
 
-      // Add user message to conversation
       conversation.messages.push({
         id: uuidv4(),
         role: 'user',
@@ -47,7 +44,6 @@ export const chatController = {
         timestamp: new Date()
       });
 
-      // Generate response from Ollama
       const result = await ollamaService.generateResponse(
         message,
         conversation.model,
@@ -58,7 +54,6 @@ export const chatController = {
         return res.status(500).json(result);
       }
 
-      // Add assistant response to conversation
       const assistantMessage = {
         id: uuidv4(),
         role: 'assistant',
@@ -67,10 +62,8 @@ export const chatController = {
       };
       conversation.messages.push(assistantMessage);
 
-      // Save conversation
       conversations.set(conversation.id, conversation);
 
-      // Clean up old conversations (keep last 100)
       if (conversations.size > 100) {
         const oldestKey = conversations.keys().next().value;
         conversations.delete(oldestKey);
@@ -88,6 +81,110 @@ export const chatController = {
         success: false, 
         error: 'Failed to process message' 
       });
+    }
+  },
+
+  async sendMessageStream(req, res) {
+    try {
+      const { message, model, conversationId } = req.body;
+
+      if (!message || message.trim().length === 0) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Message is required' 
+        });
+      }
+
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.flushHeaders();
+
+      let conversation;
+      if (conversationId && conversations.has(conversationId)) {
+        conversation = conversations.get(conversationId);
+      } else {
+        conversation = {
+          id: uuidv4(),
+          messages: [],
+          createdAt: new Date(),
+          model: model || process.env.DEFAULT_MODEL || 'llama2'
+        };
+      }
+
+      conversation.messages.push({
+        id: uuidv4(),
+        role: 'user',
+        content: message,
+        timestamp: new Date()
+      });
+
+      let fullResponse = '';
+      let assistantMessageId = uuidv4();
+
+      const result = await ollamaService.generateStreamResponse(
+        message,
+        conversation.model,
+        conversation.messages,
+        (chunk, partialResponse, done) => {
+          fullResponse = partialResponse;
+          res.write(`data: ${JSON.stringify({ 
+            success: true, 
+            chunk: chunk,
+            conversationId: conversation.id,
+            messageId: assistantMessageId,
+            done: done
+          })}\n\n`);
+        }
+      );
+
+      if (!result.success) {
+        res.write(`data: ${JSON.stringify({ 
+          success: false, 
+          error: result.error 
+        })}\n\n`);
+        res.end();
+        return;
+      }
+
+      const assistantMessage = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: fullResponse,
+        timestamp: new Date()
+      };
+      conversation.messages.push(assistantMessage);
+
+      conversations.set(conversation.id, conversation);
+
+      if (conversations.size > 100) {
+        const oldestKey = conversations.keys().next().value;
+        conversations.delete(oldestKey);
+      }
+
+      res.write(`data: ${JSON.stringify({ 
+        success: true, 
+        conversationId: conversation.id,
+        done: true 
+      })}\n\n`);
+      
+      res.end();
+    } catch (error) {
+      console.error('Stream error:', error);
+      try {
+        res.write(`data: ${JSON.stringify({ 
+          success: false, 
+          error: 'Failed to process message' 
+        })}\n\n`);
+      } catch (e) {
+        // Ignore if response already closed
+      }
+      try {
+        res.end();
+      } catch (e) {
+        // Ignore
+      }
     }
   },
 
