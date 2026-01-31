@@ -150,15 +150,15 @@ const MessageList = ({ messages, darkMode }) => {
               fontSize: '14px',
               lineHeight: '1.7',
               padding: '1.25rem',
-              backgroundColor: darkMode ? '#1e1e2e' : '#fafafa',
+              backgroundColor: darkMode ? 'var(--code-background)' : '#fafafa',
             }}
             showLineNumbers={true}
             lineNumberStyle={{
               minWidth: '2.5em',
               paddingRight: '1em',
-              color: darkMode ? '#64748b' : '#94a3b8',
+              color: darkMode ? 'var(--contrast-muted)' : '#94a3b8',
               textAlign: 'right',
-              backgroundColor: darkMode ? '#1e1e2e' : '#fafafa',
+              backgroundColor: darkMode ? 'var(--code-background)' : '#fafafa',
             }}
             {...props}
           >
@@ -242,19 +242,20 @@ const MessageList = ({ messages, darkMode }) => {
   };
 
   return (
-    <div className="space-y-6 py-6 px-4 max-w-4xl mx-auto">
-      {messages.map((message, index) => {
-        const styles = getMessageStyles(message.role);
-        const isLast = index === messages.length - 1;
-        const isAssistant = message.role === 'assistant';
-        
-        return (
-          <div
-            key={message.id}
-            className={`flex ${styles.container} ${isLast ? 'animate-fade-in-up' : ''}`}
-            style={{ animationDelay: `${index * 50}ms` }}
-          >
-            <div className={`flex gap-3 max-w-[88%] ${message.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+    <div className="w-full max-w-4xl mx-auto px-4">
+      <div className="space-y-6 py-6">
+        {messages.map((message, index) => {
+          const styles = getMessageStyles(message.role);
+          const isLast = index === messages.length - 1;
+          const isAssistant = message.role === 'assistant';
+          
+          return (
+            <div
+              key={message.id}
+              className={`flex ${styles.container} ${isLast ? 'animate-fade-in-up' : ''}`}
+              style={{ animationDelay: `${index * 50}ms` }}
+            >
+              <div className={`flex gap-3 max-w-[88%] ${message.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
               {/* Avatar */}
               {message.role !== 'system' && (
                 <div className={`flex-shrink-0 w-9 h-9 rounded-xl ${styles.icon} flex items-center justify-center shadow-lg`}>
@@ -299,17 +300,49 @@ const MessageList = ({ messages, darkMode }) => {
                         remarkPlugins={[remarkGfm]}
                         components={{
                           code: CodeBlock,
-                          p: ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>,
-                          ul: ({ children }) => <ul className="mb-3 last:mb-0 list-disc pl-5 space-y-1.5">{children}</ul>,
-                          ol: ({ children }) => <ol className="mb-3 last:mb-0 list-decimal pl-5 space-y-1.5">{children}</ol>,
-                          li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-                          h1: ({ children }) => <h1 className="text-xl font-bold mb-3 mt-4">{children}</h1>,
-                          h2: ({ children }) => <h2 className="text-lg font-bold mb-2.5 mt-3.5">{children}</h2>,
-                          h3: ({ children }) => <h3 className="text-base font-bold mb-2 mt-3">{children}</h3>,
-                          h4: ({ children }) => <h4 className="text-sm font-bold mb-2 mt-2.5">{children}</h4>,
+                          p: ({ children }) => (
+                            <p className={`mb-3 last:mb-0 leading-relaxed ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>
+                              {children}
+                            </p>
+                          ),
+                          ul: ({ children }) => (
+                            <ul className={`mb-3 last:mb-0 list-disc pl-5 space-y-1.5 ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>
+                              {children}
+                            </ul>
+                          ),
+                          ol: ({ children }) => (
+                            <ol className={`mb-3 last:mb-0 list-decimal pl-5 space-y-1.5 ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>
+                              {children}
+                            </ol>
+                          ),
+                          li: ({ children }) => (
+                            <li className={`leading-relaxed ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>
+                              {children}
+                            </li>
+                          ),
+                          h1: ({ children }) => (
+                            <h1 className={`text-xl font-bold mb-3 mt-4 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                              {children}
+                            </h1>
+                          ),
+                          h2: ({ children }) => (
+                            <h2 className={`text-lg font-bold mb-2.5 mt-3.5 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                              {children}
+                            </h2>
+                          ),
+                          h3: ({ children }) => (
+                            <h3 className={`text-base font-bold mb-2 mt-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                              {children}
+                            </h3>
+                          ),
+                          h4: ({ children }) => (
+                            <h4 className={`text-sm font-bold mb-2 mt-2.5 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                              {children}
+                            </h4>
+                          ),
                           blockquote: ({ children }) => (
                             <blockquote className={`border-l-3 pl-4 italic my-3 ${
-                              darkMode ? 'border-slate-600 text-slate-400' : 'border-slate-300 text-slate-600'
+                              darkMode ? 'border-slate-600 text-slate-300' : 'border-slate-300 text-slate-600'
                             }`}>
                               {children}
                             </blockquote>
@@ -319,13 +352,15 @@ const MessageList = ({ messages, darkMode }) => {
                               href={href} 
                               target="_blank" 
                               rel="noopener noreferrer" 
-                              className="text-blue-500 hover:text-blue-600 hover:underline underline-offset-2 transition-colors"
+                              className={`hover:underline underline-offset-2 transition-colors ${
+                                darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-500 hover:text-blue-600'
+                              }`}
                             >
                               {children}
                             </a>
                           ),
                           table: ({ children }) => (
-                            <div className="overflow-x-auto my-4 rounded-lg border border-slate-200 dark:border-slate-700">
+                            <div className={`overflow-x-auto my-4 rounded-lg border ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
                               <table className="min-w-full text-sm">
                                 {children}
                               </table>
@@ -337,25 +372,25 @@ const MessageList = ({ messages, darkMode }) => {
                             </thead>
                           ),
                           th: ({ children }) => (
-                            <th className={`border px-3 py-2 text-left font-semibold ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                            <th className={`border px-3 py-2 text-left font-semibold ${darkMode ? 'border-slate-700 text-slate-200' : 'border-slate-200 text-slate-700'}`}>
                               {children}
                             </th>
                           ),
                           td: ({ children }) => (
-                            <td className={`border px-3 py-2 ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                            <td className={`border px-3 py-2 ${darkMode ? 'border-slate-700 text-slate-200' : 'border-slate-200 text-slate-700'}`}>
                               {children}
                             </td>
                           ),
                           hr: () => <hr className={`my-4 border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`} />,
-                          strong: ({ children }) => <strong className="font-bold">{children}</strong>,
-                          em: ({ children }) => <em className="italic">{children}</em>,
-                          del: ({ children }) => <del className="line-through opacity-70">{children}</del>,
+                          strong: ({ children }) => <strong className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{children}</strong>,
+                          em: ({ children }) => <em className={`italic ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{children}</em>,
+                          del: ({ children }) => <del className={`line-through opacity-70 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{children}</del>,
                         }}
                       >
                         {message.content}
                       </ReactMarkdown>
                     ) : (
-                      <p className="m-0 whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                      <p className={`m-0 whitespace-pre-wrap leading-relaxed ${darkMode ? 'text-white' : 'text-slate-900'}`}>{message.content}</p>
                     )}
                   </div>
                 </div>
@@ -385,7 +420,8 @@ const MessageList = ({ messages, darkMode }) => {
             </div>
           </div>
         );
-      })}
+        })}
+      </div>
     </div>
   );
 };
